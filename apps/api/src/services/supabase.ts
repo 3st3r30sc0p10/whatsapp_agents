@@ -86,6 +86,19 @@ export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
   return mapTenant(data as Record<string, unknown>);
 }
 
+export async function getTenantByWhatsappNumber(
+  whatsappNumber: string
+): Promise<Tenant | null> {
+  const { data, error } = await db()
+    .from("tenants")
+    .select("*")
+    .eq("whatsapp_number", whatsappNumber)
+    .eq("active", true)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapTenant(data as Record<string, unknown>);
+}
+
 export async function getTenantIdBySlug(slug: string): Promise<string | null> {
   const { data, error } = await db()
     .from("tenants")
