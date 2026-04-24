@@ -28,7 +28,8 @@ async function main(): Promise<void> {
   await app.register(adminRoutes, { prefix: "/admin" });
 
   const port = Number(process.env.APP_PORT ?? "3000");
-  await app.listen({ port, host: "0.0.0.0" });
+  const host = process.env.APP_HOST ?? "127.0.0.1";
+  await app.listen({ port, host });
 }
 
 main().catch((err) => {

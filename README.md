@@ -70,6 +70,14 @@ SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 APP_ENV=development
 ```
 
+### Checklist de seguridad para `.env`
+
+- Usa `.env.example` solo con placeholders (nunca claves reales).
+- Guarda claves reales unicamente en `.env` local o variables del proveedor (Railway, Vercel, etc.).
+- No subas `.env` a git; verifica que este incluido en `.gitignore`.
+- Antes de hacer push, corre `git diff` y confirma que no haya secretos.
+- Si una clave se filtra, rotala en el proveedor y limpia el historial de git.
+
 ### 3. Crear schema en Supabase
 
 En el Supabase Dashboard → SQL Editor, ejecuta el contenido completo de `sql/schema.sql`.
