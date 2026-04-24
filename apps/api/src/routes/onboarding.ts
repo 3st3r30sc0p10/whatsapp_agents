@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { insertTenant, slugExists } from "../services/supabase.js";
 import type { TenantConfigData } from "@autochat/shared";
+import { generateUniqueTenantSlug } from "../utils/slug.js";
 
 const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -53,27 +54,6 @@ const onboardingBodySchema = z.object({
     .min(1),
 });
 
-function slugify(name: string): string {
-  const noAcc = name.normalize("NFD").replace(/\p{M}/gu, "");
-  const s = noAcc
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  return s || "negocio";
-}
-
-async function uniqueSlug(base: string): Promise<string> {
-  let slug = base;
-  let n = 2;
-  while (await slugExists(slug)) {
-    const suffix = `-${n}`;
-    slug = (base.slice(0, Math.max(1, 40 - suffix.length)) + suffix).slice(0, 40);
-    n += 1;
-  }
-  return slug;
-}
-
 export const onboardingRoutes: FastifyPluginAsync = async (
   app: FastifyInstance
 ) => {
@@ -107,8 +87,10 @@ export const onboardingRoutes: FastifyPluginAsync = async (
         slots: b.slots,
         currency_label: b.currency_label,
       };
-      const baseSlug = slugify(b.business_name);
-      const slug = await uniqueSlug(baseSlug);
+      const slug = await generateUniqueTenantSlug(
+        { businessName: b.business_name, address: b.address },
+        slugExists
+      );
       await insertTenant({
         slug,
         business_name: b.business_name,
