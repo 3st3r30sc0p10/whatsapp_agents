@@ -66,6 +66,21 @@ type IncomingEvent = {
   phoneNumberId?: string;
 };
 
+function getHubVerificationParams(request: FastifyRequest): {
+  mode: string | null;
+  token: string | null;
+  challenge: string | null;
+} {
+  const rawUrl = request.raw.url ?? "";
+  const queryString = rawUrl.includes("?") ? rawUrl.slice(rawUrl.indexOf("?") + 1) : "";
+  const params = new URLSearchParams(queryString);
+  return {
+    mode: params.get("hub.mode"),
+    token: params.get("hub.verify_token"),
+    challenge: params.get("hub.challenge"),
+  };
+}
+
 function extractMetaEvents(body: unknown): IncomingEvent[] {
   const parsed = metaWebhookBodySchema.safeParse(body);
   if (!parsed.success) return [];
@@ -126,10 +141,7 @@ export const webhookRoutes: FastifyPluginAsync = async (
   app: FastifyInstance
 ) => {
   app.get<{ Params: { slug: string } }>("/webhook/:slug", async (request, reply) => {
-    const q = request.query as Record<string, string | undefined>;
-    const mode = q["hub.mode"];
-    const token = q["hub.verify_token"];
-    const challenge = q["hub.challenge"];
+    const { mode, token, challenge } = getHubVerificationParams(request);
     if (mode === "subscribe" && token === process.env.META_VERIFY_TOKEN && challenge) {
       return reply.code(200).send(parseInt(challenge, 10));
     }
@@ -137,14 +149,9 @@ export const webhookRoutes: FastifyPluginAsync = async (
   });
 
   app.get("/webhook/meta", async (request, reply) => {
-    const q = request.query as Record<string, string | undefined>;
-    const mode = q["hub.mode"];
-    const token = q["hub.verify_token"];
-    const challenge = q["hub.challenge"];
+    const { mode, token, challenge } = getHubVerificationParams(request);
     if (
       mode === "subscribe" &&
-      token &&
-      process.env.META_VERIFY_TOKEN &&
       token === process.env.META_VERIFY_TOKEN &&
       challenge
     ) {
