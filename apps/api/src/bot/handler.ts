@@ -117,8 +117,7 @@ export async function handleMessage(input: {
       }
     }
 
-    const sessionRef = userMessageAt;
-    const ok = await sendMessage(tenant, sessionRef, contactPhone, responseText);
+    const ok = await sendMessage(contactPhone, responseText);
     if (!ok) {
       await updateConversationStatus(conversation.id, "window_expired");
       statusSent = "skipped";
@@ -147,7 +146,7 @@ export async function handleMessage(input: {
         lastUserMessageAt: userMessageAt,
       });
       const fb = `Disculpa, tuve un problema técnico. Por favor escríbenos de nuevo o llámanos al ${tenant.config.phone}. 🙏`;
-      const ok = await sendMessage(tenant, userMessageAt, contactPhone, fb);
+      const ok = await sendMessage(contactPhone, fb);
       if (ok) {
         await saveMessage({
           conversationId: conversation.id,

@@ -1,6 +1,5 @@
-import axios, { type AxiosError } from "axios";
+import axios from "axios";
 import type { Tenant } from "@autochat/shared";
-import { isWithinSessionWindow } from "../bot/session.js";
 
 export function formatTime12h(time: string): string {
   const [hStr, mStr] = time.slice(0, 5).split(":");
@@ -25,66 +24,46 @@ export function formatDateES(date: string): string {
 }
 
 export async function sendMessage(
-  tenant: Tenant,
-  conversationLastActive: Date | null,
   to: string,
   text: string
 ): Promise<boolean> {
-  if (!isWithinSessionWindow(conversationLastActive)) {
-    console.log(
-      `[WA] session expired for ${to.slice(-4)}, tenant:${tenant.slug}, skipping send`
-    );
+  const phoneId = process.env.META_PHONE_ID;
+  const token = process.env.META_TOKEN;
+  if (!phoneId || !token) {
+    console.error("[WA] Send failed: META_PHONE_ID or META_TOKEN missing");
     return false;
   }
-  const base = process.env.D360_BASE_URL?.replace(/\/$/, "") ?? "";
-  const key = process.env.D360_API_KEY;
-  if (!key || !base) {
-    console.error("[WA] send failed: D360 env missing");
-    return false;
-  }
-  const url = `${base}/v1/messages`;
-  const body = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to,
-    type: "text",
-    text: { preview_url: false, body: text },
-  };
-  const postOnce = () =>
-    axios.post(url, body, {
-      headers: {
-        "D360-API-KEY": key,
-        "Content-Type": "application/json",
-      },
-      timeout: 30_000,
-    });
+
   try {
-    await postOnce();
-    return true;
-  } catch (e) {
-    const err = e as AxiosError;
-    const status = err.response?.status;
-    if (status === 429) {
-      await new Promise((r) => setTimeout(r, 2000));
-      try {
-        await postOnce();
-        return true;
-      } catch (e2) {
-        const er = e2 as AxiosError;
-        console.error(`[WA] send failed: ${er.message}`);
-        return false;
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneId}/messages`,
+      {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "text",
+        text: { preview_url: false, body: text },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       }
-    }
-    console.error(`[WA] send failed: ${err.message}`);
+    );
+    return true;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[WA] Send failed:", message);
     return false;
   }
 }
 
-/** Staff alerts: treat as in-window so Meta policy for customer session does not block internal escalation. */
+/** Staff alerts use the same outbound channel for now. */
 export async function sendStaffAlert(
-  tenant: Tenant,
+  _tenant: Tenant,
   toDigits: string,
   text: string
 ): Promise<boolean> {
-  return sendMessage(tenant, new Date(), toDigits, text);
+  return sendMessage(toDigits, text);
 }

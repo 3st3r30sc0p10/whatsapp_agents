@@ -125,6 +125,17 @@ async function processEvents(
 export const webhookRoutes: FastifyPluginAsync = async (
   app: FastifyInstance
 ) => {
+  app.get<{ Params: { slug: string } }>("/webhook/:slug", async (request, reply) => {
+    const q = request.query as Record<string, string | undefined>;
+    const mode = q["hub.mode"];
+    const token = q["hub.verify_token"];
+    const challenge = q["hub.challenge"];
+    if (mode === "subscribe" && token === process.env.META_VERIFY_TOKEN && challenge) {
+      return reply.code(200).send(parseInt(challenge, 10));
+    }
+    return reply.code(403).send("forbidden");
+  });
+
   app.get("/webhook/meta", async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
     const mode = q["hub.mode"];
