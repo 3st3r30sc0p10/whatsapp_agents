@@ -385,3 +385,5 @@ MIT — libre para uso comercial.
 ---
 
 *Construido con Claude Code · Stack: FastAPI + Anthropic Managed Agents + Kapso + Mem0 + Supabase + Railway*
+
+<!-- deploy-trigger: 2026-04-25 -->
