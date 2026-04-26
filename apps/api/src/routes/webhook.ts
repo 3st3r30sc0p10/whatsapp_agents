@@ -150,18 +150,6 @@ export const webhookRoutes: FastifyPluginAsync = async (
 
   app.get("/webhook/meta", async (request, reply) => {
     const { mode, token, challenge } = getHubVerificationParams(request);
-    // TEMP DEBUG: remove after webhook verification is stable.
-    request.log.info(
-      {
-        mode,
-        hasToken: Boolean(token),
-        tokenLen: token?.length ?? 0,
-        envTokenLen: process.env.META_VERIFY_TOKEN?.length ?? 0,
-        tokenMatches: token === process.env.META_VERIFY_TOKEN,
-        challengeLen: challenge?.length ?? 0,
-      },
-      "[WEBHOOK_META_VERIFY_DEBUG]"
-    );
     if (
       mode === "subscribe" &&
       token === process.env.META_VERIFY_TOKEN &&
