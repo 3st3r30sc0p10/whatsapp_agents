@@ -47,9 +47,25 @@ CREATE TABLE processed_messages (
   processed_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE message_status_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  wamid TEXT NOT NULL,
+  status TEXT NOT NULL,
+  recipient_id TEXT,
+  phone_number_id TEXT,
+  status_at TIMESTAMPTZ,
+  conversation_id TEXT,
+  origin_type TEXT,
+  billable BOOLEAN,
+  pricing_category TEXT,
+  raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at DESC);
 CREATE INDEX idx_bookings_tenant_date ON bookings(tenant_id, booking_date);
 CREATE INDEX idx_conversations_tenant ON conversations(tenant_id, last_user_message_at DESC);
+CREATE INDEX idx_message_status_events_wamid ON message_status_events(wamid, created_at DESC);
 
 INSERT INTO tenants (slug, business_name, config) VALUES ('salon-demo', 'Glamour Studio Medellín', '{
   "vertical": "salón de belleza",

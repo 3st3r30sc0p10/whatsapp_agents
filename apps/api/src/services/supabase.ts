@@ -11,6 +11,19 @@ import { parseTenantConfig } from "../tenantConfig.js";
 
 let client: SupabaseClient | null = null;
 
+export type MessageStatusEventInput = {
+  wamid: string;
+  status: string;
+  recipient_id: string | null;
+  phone_number_id: string | null;
+  status_at: string | null;
+  conversation_id: string | null;
+  origin_type: string | null;
+  billable: boolean | null;
+  pricing_category: string | null;
+  raw: unknown;
+};
+
 function db(): SupabaseClient {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -178,6 +191,24 @@ export async function isDuplicate(wamid: string): Promise<boolean> {
 
 export async function markProcessed(wamid: string): Promise<void> {
   const { error } = await db().from("processed_messages").insert({ wamid });
+  if (error) throw error;
+}
+
+export async function insertMessageStatusEvent(
+  input: MessageStatusEventInput
+): Promise<void> {
+  const { error } = await db().from("message_status_events").insert({
+    wamid: input.wamid,
+    status: input.status,
+    recipient_id: input.recipient_id,
+    phone_number_id: input.phone_number_id,
+    status_at: input.status_at,
+    conversation_id: input.conversation_id,
+    origin_type: input.origin_type,
+    billable: input.billable,
+    pricing_category: input.pricing_category,
+    raw: input.raw,
+  });
   if (error) throw error;
 }
 

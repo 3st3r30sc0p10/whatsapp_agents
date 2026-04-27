@@ -4,6 +4,7 @@ import { handleMessage } from "../bot/handler.js";
 import {
   getTenantBySlug,
   getTenantByWhatsappNumber,
+  insertMessageStatusEvent,
   isDuplicate,
 } from "../services/supabase.js";
 
@@ -19,6 +20,28 @@ const messageSchema = z
     type: z.string(),
     timestamp: z.string(),
     text: z.object({ body: z.string() }).optional(),
+  })
+  .passthrough();
+
+const statusSchema = z
+  .object({
+    id: z.string().optional(),
+    status: z.string(),
+    timestamp: z.string().optional(),
+    recipient_id: z.string().optional(),
+    conversation: z
+      .object({
+        id: z.string().optional(),
+        origin: z.object({ type: z.string().optional() }).optional(),
+      })
+      .optional(),
+    pricing: z
+      .object({
+        billable: z.boolean().optional(),
+        category: z.string().optional(),
+      })
+      .optional(),
+    errors: z.array(z.unknown()).optional(),
   })
   .passthrough();
 
@@ -41,6 +64,7 @@ const metaWebhookBodySchema = z
                     .optional(),
                   contacts: z.array(contactSchema).optional(),
                   messages: z.array(messageSchema).optional(),
+                  statuses: z.array(statusSchema).optional(),
                 }),
               })
             )
@@ -65,6 +89,23 @@ type IncomingEvent = {
   contacts?: z.infer<typeof contactSchema>[];
   phoneNumberId?: string;
 };
+
+type IncomingStatusEvent = {
+  status: z.infer<typeof statusSchema>;
+  phoneNumberId?: string;
+};
+
+function maskPhone(phone: string): string {
+  if (!phone) return "unknown";
+  return phone.length <= 4 ? phone : `***${phone.slice(-4)}`;
+}
+
+function parseMetaTimestamp(ts?: string): string {
+  if (!ts) return "unknown";
+  const parsed = parseInt(ts, 10);
+  if (!Number.isFinite(parsed)) return "unknown";
+  return new Date(parsed * 1000).toISOString();
+}
 
 function getHubVerificationParams(request: FastifyRequest): {
   mode: string | null;
@@ -96,6 +137,21 @@ function extractMetaEvents(body: unknown): IncomingEvent[] {
   return out;
 }
 
+function extractMetaStatusEvents(body: unknown): IncomingStatusEvent[] {
+  const parsed = metaWebhookBodySchema.safeParse(body);
+  if (!parsed.success) return [];
+  const out: IncomingStatusEvent[] = [];
+  for (const entry of parsed.data.entry) {
+    for (const change of entry.changes) {
+      const phoneNumberId = change.value.metadata?.phone_number_id;
+      for (const status of change.value.statuses ?? []) {
+        out.push({ status, phoneNumberId });
+      }
+    }
+  }
+  return out;
+}
+
 async function processEvents(
   request: FastifyRequest,
   events: IncomingEvent[],
@@ -121,6 +177,18 @@ async function processEvents(
     const name = contactNameFromPayload(event.contacts, from);
     const ts = parseInt(msg.timestamp, 10);
     const userMessageAt = Number.isFinite(ts) ? new Date(ts * 1000) : new Date();
+    request.log.info(
+      {
+        phoneNumberId: event.phoneNumberId ?? "unknown",
+        from: maskPhone(from),
+        name: name ?? "unknown",
+        wamid,
+        at: userMessageAt.toISOString(),
+        type: msg.type,
+        textPreview: text.slice(0, 120),
+      },
+      "[WEBHOOK] inbound message"
+    );
     void handleMessage({
       tenant,
       contactPhone: from,
@@ -134,6 +202,51 @@ async function processEvents(
         "[WEBHOOK] handler error"
       );
     });
+  }
+}
+
+async function processStatusEvents(
+  request: FastifyRequest,
+  statusEvents: IncomingStatusEvent[]
+): Promise<void> {
+  for (const ev of statusEvents) {
+    const wamid = ev.status.id;
+    if (!wamid) continue;
+    const statusAt = parseMetaTimestamp(ev.status.timestamp);
+    request.log.info(
+      {
+        phoneNumberId: ev.phoneNumberId ?? "unknown",
+        status: ev.status.status,
+        wamid,
+        to: ev.status.recipient_id ? maskPhone(ev.status.recipient_id) : "unknown",
+        at: statusAt,
+        conversationId: ev.status.conversation?.id ?? "unknown",
+        originType: ev.status.conversation?.origin?.type ?? "unknown",
+        billable: ev.status.pricing?.billable ?? null,
+        category: ev.status.pricing?.category ?? "unknown",
+        hasErrors: Boolean(ev.status.errors?.length),
+      },
+      "[WEBHOOK] outbound status update"
+    );
+    try {
+      await insertMessageStatusEvent({
+        wamid,
+        status: ev.status.status,
+        recipient_id: ev.status.recipient_id ?? null,
+        phone_number_id: ev.phoneNumberId ?? null,
+        status_at: statusAt === "unknown" ? null : statusAt,
+        conversation_id: ev.status.conversation?.id ?? null,
+        origin_type: ev.status.conversation?.origin?.type ?? null,
+        billable: ev.status.pricing?.billable ?? null,
+        pricing_category: ev.status.pricing?.category ?? null,
+        raw: ev.status,
+      });
+    } catch (err) {
+      request.log.error(
+        { err, wamid, status: ev.status.status },
+        "[WEBHOOK] status persistence error"
+      );
+    }
   }
 }
 
@@ -162,10 +275,14 @@ export const webhookRoutes: FastifyPluginAsync = async (
 
   app.post("/webhook/meta", async (request, reply) => {
     const events = extractMetaEvents(request.body);
-    if (!events.length) {
+    const statusEvents = extractMetaStatusEvents(request.body);
+    if (!events.length && !statusEvents.length) {
       request.log.warn("[WEBHOOK] invalid meta body");
       return reply.code(200).send({ ok: true });
     }
+    void processStatusEvents(request, statusEvents).catch((err) => {
+      request.log.error({ err }, "[WEBHOOK] meta status process error");
+    });
     void processEvents(request, events, async (event) => {
       if (!event.phoneNumberId) return null;
       return getTenantByWhatsappNumber(event.phoneNumberId);
